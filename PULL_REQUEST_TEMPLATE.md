@@ -59,25 +59,9 @@ Please use the checklist that is most closely related to your pr _(you only need
 
 Thanks for contributing!
 
-## Readme advice
-
-Please review this section if you are updating readme documentation.
-
-**Readme template**
-
-This project uses [verb][] for documentation. Verb generates the project's readme documentation from the [.verb.md](../.verb.md) template in the root of this project.
-
-Make all documentation changes in `.verb.md`, and please _do not edit the readme.md directly_, or your changes might accidentally get overwritten.
-
 **Code comments**
 
 Please add code comments (following the same style as existing comments) to describe any code changes or new code introduced by your pull request.
-
-**Optionally build the readme**
-
-Any changes made `.verb.md` and/or code comments will be automatically incorporated into the README documentation the next time `verb` is run.
-
-We can take care of building the documentation for you when we merge in your changes, or feel free to run [verb][] yourself. Whatever you prefer is fine with us.
 
 ## package.json contributors
 
