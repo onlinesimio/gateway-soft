@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "es2017",
+    "module": "esnext",
+    "moduleResolution": "node",
+    "inlineSources": true,
+    "sourceMap": true,
+    "allowSyntheticDefaultImports": true,
+    "experimentalDecorators": true,
+    "newLine": "lf",
+    "noEmitOnError": true,
+    "stripInternal": true,
+    "outDir": "out",
+    "skipLibCheck": true
+  },
+  "include": [
+    "**/*.ts",
+    "typings/*.d.ts"
+  ]
+}

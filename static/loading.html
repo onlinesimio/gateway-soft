@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Document</title>
+  <link rel="stylesheet" href="semantic.css">
+  <script>
+    const { ipcRenderer } = require('electron');
+
+    ipcRenderer.send("loadingScreenConnected");
+
+    ipcRenderer.on("loadingText", (event, text) => {
+      document.getElementById("text").innerHTML = text;
+    })
+  </script>
+</head>
+
+<body>
+  <div class="ui container">
+    <div class="ui active dimmer">
+      <div class="ui text loader">
+        Loading
+        <p id="text"></p>
+      </div>
+    </div>
+    <p></p>
+  </div>
+</body>
+
+</html>
