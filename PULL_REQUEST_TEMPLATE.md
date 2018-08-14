@@ -105,4 +105,4 @@ full name <email@address.com> (https://website.com)
 _(If a `contributors` array does not already exist, please feel free to add one wherever you want, and congratulations on being the first to contribute!)_
 
 [issues]: ../../issues
-[verb]: https://github.com/verbose/verb
+[gateway-soft]: https://github.com/onlinesimio/gateway-soft
