@@ -26,7 +26,7 @@
     "dotenv": "^6.0.0",
     "electron-log": "^2.2.16",
     "electron-store": "^2.0.0",
-    "knex": "^0.15.2",
+    "knex": "^0.19.5",
     "pdu.ts": "^1.1.4",
     "semantic-ui-css": "^2.3.3",
     "semantic-ui-vue": "^0.3.3",
