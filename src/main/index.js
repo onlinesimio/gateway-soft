@@ -1,14 +1,16 @@
 'use strict'
+process.env.UV_THREADPOOL_SIZE = "100";
 
 import { app, BrowserWindow, ipcMain } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { format as formatUrl, resolve } from 'url';
-import { DB } from "../../lib/db";
 import logger from '../../lib/logger';
 import ConfigStore from 'electron-store';
 import { config } from 'dotenv';
 import Logger from 'electron-log';
+
+app.allowRendererProcessReuse = false;
 
 config({
   path: __static + '/.env'
@@ -22,22 +24,17 @@ const isDevelopment = process.env.NODE_ENV !== 'production'
 // global reference to mainWindow (necessary to prevent window from being garbage collected)
 let mainWindow
 
-function getDbPath() {
-  let appPath = app.getPath('userData');
-
-  if (!fs.existsSync(appPath)) {
-    fs.mkdirSync(appPath);
-  }
-
-  return path.join(appPath, 'db.sqlite');
-}
-
-const db = new DB(getDbPath());
 const configStore = new ConfigStore();
 
 function createMainWindow() {
   const window = new BrowserWindow({
-    webPreferences: { webSecurity: false }
+    webPreferences: {
+      webSecurity: false,
+      nodeIntegration: true,
+      webviewTag: true
+    },
+    frame: true,
+    allowRunningInsecureContent: false,
   })
 
   if (isDevelopment) {
@@ -75,16 +72,6 @@ function createMainWindow() {
   return window
 }
 
-function migrate() {
-  return db.db.migrate.latest({
-    directory: path.join(__static, 'migrations')
-  });
-}
-
-ipcMain.on('getDbPath', (event, arg) => {
-  event.returnValue = getDbPath();
-})
-
 ipcMain.on('getLog', (event, arg) => {
   let log = fs.readFileSync(Logger.transports.file.findLogPath(process.env.npm_app_name)).toString();
   event.returnValue = log;
@@ -98,10 +85,11 @@ ipcMain.on('clearLog', (event, arg) => {
 // quit application when all windows are closed
 app.on('window-all-closed', () => {
   // on macOS it is common for applications to stay open until the user explicitly quits
-  if (process.platform !== 'darwin') {
-    app.quit()
+  app.quit();
+  if (process.platform !== "darwin") {
+    app.quit();
   }
-  mainWindow.webContents.send('quit');
+  mainWindow.webContents.send("quit");
 })
 
 app.on('activate', () => {
@@ -124,7 +112,10 @@ app.on('ready', () => {
     maxHeight: 400,
     maxWidth: 400,
     minHeight: 400,
-    minWidth: 400
+    minWidth: 400,
+    webPreferences: {
+      nodeIntegration: true
+    }
   });
 
 
@@ -133,36 +124,27 @@ app.on('ready', () => {
 
     let loadingIPC = event.sender;
 
-    loadingIPC.send("loadingText", "Update database structure")
+    loadingIPC.send("loadingText", "Update mncmcc database")
     logger.debug('Starting migrations');
 
-    setTimeout(() => {
-      migrate().then(() => {
-        logger.debug("Migration completed");
-        loadingIPC.send("loadingText", "Loading imsi data");
+    setTimeout(async () => {
+      fs.readFileSync(path.join(__static, 'mncmcc.json'), (err, data) => {
+        if (err) {
+          reject(err);
+        }
 
-        return new Promise((resolve, reject) => {
-          fs.readFile(path.join(__static, 'mncmcc.json'), (err, data) => {
-            if (err) {
-              reject(err);
-            }
+        let items = JSON.parse(data.toString());
+        configStore.set('mncmcc', items);
+        resolve();
+      })
 
-            let items = JSON.parse(data.toString());
-            configStore.set('mncmcc', items);
-            resolve();
-          })
-        })
-      }).then(() => {
-        //loadingIPC.send("loadingText", "Find user")
-        mainWindow = createMainWindow();
-        mainWindow.webContents.once('dom-ready', () => {
-          mainWindow.show();
-          loading.hide();
-          loading.destroy();
-        })
-      }).catch(err => {
-        logger.error(err);
-      });
+      //loadingIPC.send("loadingText", "Find user")
+      mainWindow = createMainWindow();
+      mainWindow.webContents.once('dom-ready', () => {
+        mainWindow.show();
+        loading.hide();
+        loading.destroy();
+      })
     }, 1000)
   });
 

@@ -3,10 +3,9 @@ import { DB } from "./db";
 import { EventEmitter } from "events";
 import { pduMessage } from "pdu.ts/build";
 import logger from './logger';
-import { ChildProcess } from "child_process";
-import { fork } from "child_process";
-import { IPCMessage, ModemObjectForInterface } from "./modemConnectionProcess";
+import { IPCMessage, ModemObjectForInterface, ModemConnection } from "./modemConnectionProcess";
 import { SimIdentification } from "./imsi";
+import store from "../src/renderer/store";
 
 export interface PDUMessage extends pduMessage {
   dcs: number,
@@ -26,32 +25,32 @@ export interface PDUMessage extends pduMessage {
 
 
 interface Modems {
-  [usbID: string]: ChildProcess
+  [usbID: string]: ModemConnection
 }
 
 interface Devices {
   [usbID: string]: Array<USBInfo>;
 }
 
-interface USBInfo {
-  comName: string;
+export interface USBInfo {
+  path: string;
   manufacturer?: string;
   serialNumber?: string;
   pnpId?: string;
-  locationId: string;
-  vendorId?: string;
+  locationId?: string;
   productId?: string;
+  vendorId?: string;
 }
 
 export class ModemManager extends EventEmitter {
   modems: Modems;
   db: DB;
   timer: NodeJS.Timer;
-  list: SimIdentification;
+  list: Array<SimIdentification>;
 
-  constructor(dbPath: string, list: SimIdentification) {
+  constructor(list: Array<SimIdentification>) {
     super();
-    this.db = new DB(dbPath);
+    this.db = new DB();
     this.list = list;
     this.setMaxListeners(128);
 
@@ -80,10 +79,7 @@ export class ModemManager extends EventEmitter {
 
   saveModemConfig(modem: ModemObjectForInterface) {
     return this.db.saveModemConfig(modem).then(() => {
-      this.modems[modem.usbID].send({
-        event: 'reconnect',
-        data: modem
-      })
+      this.modems[modem.usbID].reconnectToModem(modem);
     }).catch(err => {
       logger.error(err);
     })
@@ -133,6 +129,7 @@ export class ModemManager extends EventEmitter {
 
   async connectNewDevices(devices: Devices): Promise<void> {
     logger.debug('connecting new devices');
+    logger.debug("Pool:", process.env.UV_THREADPOOL_SIZE);
     this.emit('loading', true);
     clearInterval(this.timer);
     this.timer = null;
@@ -141,19 +138,18 @@ export class ModemManager extends EventEmitter {
     for (let usbID in devices) {
       promises.push(new Promise((resolve, reject) => {
         const env = { ...process.env };
-        let child = fork('./dist/main/modemConnectionProcess', [], {
-          env,
-          stdio: [0, 1, 2, 'ipc']
-        });
+        let child = new ModemConnection(devices[usbID], this.list, this.db)
 
-        logger.debug('fork: ', child.pid);
-
-        child.send({
-          event: 'start',
-          data: {
-            simIdentification: this.list,
-            ports: devices[usbID]
-          }
+        child.connect().then(() => {
+          this.emit('modemConnected', child.modem.usbID, {
+            comPorts: Object.keys(child.modem.comPorts),
+            config: child.modem.config,
+            info: child.modem.info,
+            loading: true,
+            online: true,
+            usbID: child.modem.usbID,
+            usbName: child.modem.usbName
+          });
         })
 
         this.registerListeners(usbID, child)
@@ -181,64 +177,63 @@ export class ModemManager extends EventEmitter {
     })
   }
 
-  registerListeners(usbID: string, child: ChildProcess) {
-    child.on('message', (msg: IPCMessage) => {
-      switch (msg.event) {
-        case 'error': {
-          logger.error(msg.error.message)
-          break;
-        }
-        case 'modemConnected': {
-          this.emit('modemConnected', usbID, msg.data.modem);
-          break;
-        }
-        case 'modemUpdated': {
-          if (msg.hasOwnProperty('error')) {
-            this.emit('modemUpdated', usbID, msg.error)
-            return;
-          }
-          this.emit('modemUpdated', usbID, msg.data.modem)
-          break;
-        }
-        case 'newSMSMessage': {
-          this.emit('newSMSMessage', usbID, msg.data.message);
+  registerListeners(usbID: string, child: ModemConnection) {
+    child.on('modemConnected', (msg: any) => {
+      this.emit('modemConnected', usbID, msg.modem);
+    })
 
-          this.db.saveMessage(msg.data.message, msg.data.info).then(() => {
-            console.log('message saved');
-          });
-          break;
-        }
-        case 'updating': {
-          this.emit('updating', usbID)
-          break;
-        }
-        case 'updatingFinished': {
-          this.emit('updatingFinished', usbID);
-          break;
-        }
-        case 'modemError': {
-          delete this.modems[usbID];
-          break;
-        }
-        case 'modemDisconnected': {
-          this.emit('modemDisconnected', usbID)
-          break;
-        }
-        case 'modemReconnected': {
-          this.emit('modemUpdated', usbID, msg.data.modem);
-          break;
-        }
-        case 'db': {
-          this.dbCall(msg.method, msg.params).then((result) => {
-            child.send({
-              event: 'dbResponse',
-              method: msg.method,
-              data: result
-            })
-          })
-          break;
-        }
+    child.on('error', (msg: any) => {
+      logger.error(msg.error.message)
+    })
+
+    child.on('modemUpdated', (msg: any) => {
+      if (msg.hasOwnProperty('error')) {
+        this.emit('modemUpdated', usbID, msg.error)
+        return;
       }
+      this.emit('modemUpdated', usbID, msg.modem)
+    })
+
+    child.on('newSMSMessage', (msg: any) => {
+      this.emit('newSMSMessage', usbID, msg.message);
+
+      this.db.saveMessage(msg.message, msg.info).then(() => {
+        console.log('message saved');
+      });
+    })
+
+    child.on('updating', (msg: any) => {
+      this.emit('updating', usbID)
+    })
+
+    child.on('updatingFinished', (msg: any) => {
+      this.emit('updatingFinished', usbID);
+    })
+
+    child.on('modemError', (msg: any) => {
+      delete this.modems[usbID];
+      store.dispatch('modems/removeModem', usbID)
+    })
+
+    child.on('modemDisconnected', (msg: any) => {
+      this.emit('modemDisconnected', usbID)
+    })
+
+    child.on('modemReconnected', (msg: any) => {
+      this.emit('modemUpdated', usbID, msg.modem);
+    })
+
+    child.on('db', (msg: any) => {
+      this.dbCall(msg.method, msg.params).then((result) => {
+        child.emit('dbResponse', {
+          method: msg.method,
+          data: result
+        })
+      })
+    })
+
+    child.on('message', (msg: any) => {
+      console.log(msg);
     })
   }
 
@@ -269,7 +264,7 @@ export class ModemManager extends EventEmitter {
 
       this.modems[usbID].on("exit", listener);
 
-      this.modems[usbID].kill();
+      delete this.modems[usbID];
     }).then(() => {
       delete this.modems[usbID];
     })
@@ -288,9 +283,10 @@ export class ModemManager extends EventEmitter {
       if (!this.modems[usbID]) {
         reject('usbID = ' + usbID + ' not found in list');
       }
-      this.modems[usbID].send({
-        event: 'disconnectModem'
-      })
+      this.modems[usbID].emit('disconnectModem')
+      this.modems[usbID].disconnectModem()
+
+      delete this.modems[usbID];
 
       const listener = () => {
         this.removeListener('modemDisconnected', listener);

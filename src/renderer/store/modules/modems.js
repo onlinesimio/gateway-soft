@@ -10,8 +10,15 @@ const mutations = {
     delete state.list[usbID];
   },
   updateModem(state, modem) {
-    state.list[modem.usbID] = modem;
+    if(!state.list[modem.usbID]) return;
+    for (let i in modem) {
+      state.list[modem.usbID][i] = modem[i];
+    }
   }
+}
+
+const getters = {
+  modems: (state) => state.list
 }
 
 export default {

@@ -1,3 +1,5 @@
+process.env.UV_THREADPOOL_SIZE = "100";
+
 import Vue from 'vue'
 
 import App from './App'

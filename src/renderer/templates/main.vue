@@ -13,37 +13,7 @@
       <div class="item">
         Reselling
       </div>
-      <div class="item" v-if="!user">
-        <div class="header">
-          Authorization
-        </div>
-        <div class="menu">
-          <router-link class="item" to="/auth/login">
-            <sui-icon name="sign in" fitted />
-            Login
-          </router-link>
-          <router-link class="item" to="/auth/register">
-            <sui-icon name="pen square"/>
-            Registration
-          </router-link>
-        </div>
-      </div>
-      <div class="item" v-if="user">
-        <div class="header">
-          Account
-        </div>
-        <div class="menu">
-          <router-link class="item" to="/profile">
-            <sui-icon name="user" fitted />
-            Profile
-          </router-link>
-          <router-link class="item" to="/auth/logout">
-            <sui-icon name="sign out"/>
-            Log out
-          </router-link>
-        </div>
-      </div>
-      <router-link v-if="user" class="item" to="/modems">
+      <router-link class="item" to="/modems">
           <sui-icon name="mobile"/>
           Modems list
       </router-link>

@@ -101,7 +101,6 @@
 </template>
 
 <script>
-import { api } from "@/../../lib/smsApi.ts";
 import fadeLoader from "@/components/fadeLoader";
 import { ipcRenderer } from "electron";
 export default {
@@ -155,27 +154,17 @@ export default {
       });
       this.$modems.on("modemRemoved", usbID => {
         this.logger.debug("Modem removed", usbID);
-        // api.setErrorStatus(this.modems[usbID].usbName);
         this.$delete(this.modems, usbID);
       });
       this.$modems.on("modemDisconnected", usbID => {
         this.logger.debug("Modem disconnected", usbID);
         this.$set(this.modems[usbID], "online", false);
-        // api.setErrorStatus(this.modems[usbID].usbName);
       });
       this.$modems.on("newSMSMessage", (usbID, message) => {
         console.log("new SMS: ", message);
-        // api.sendMessage(
-        //   this.modems[usbID].usbName,
-        //   message.sender,
-        //   message.text
-        // );
       });
       this.$modems.on("modemConnected", (usbID, modem) => {
         this.$set(this.modems, usbID, modem);
-        if (modem.info.simCard) {
-          // api.setOkStatus(this.modems[usbID].usbName);
-        }
       });
       this.$modems.on("updatingFinished", usbID => {
         if (!this.modems[usbID]) return;
@@ -187,12 +176,7 @@ export default {
       });
       this.$modems.on("modemUpdated", (usbID, modem) => {
         this.logger.debug("Modem updated", usbID);
-        if (this.modems[usbID].info.simCard && !modem.info.simCard) {
-          // api.setErrorStatus(this.modems[usbID].usbName);
-        }
-        if (!this.modems[usbID].info.simCard && modem.info.simCard) {
-          // api.setOkStatus(this.modems[usbID].usbName);
-        }
+
         this.$set(this.modems, usbID, modem);
       });
       ipcRenderer.on("quit", () => {

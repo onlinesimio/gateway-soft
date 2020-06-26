@@ -1,20 +1,12 @@
-import * as Knex from 'knex';
 import { DriverConfig, DeviceInfo } from './driver';
 import { PDUMessage } from './manager';
 import { ModemObjectForInterface } from './modemConnectionProcess';
+import store from '../src/renderer/store'
 
 export class DB {
-  db: Knex;
   defaultConfig: DriverConfig;
 
-  constructor(dbPath: string) {
-    this.db = Knex({
-      client: 'sqlite3',
-      connection: {
-        filename: dbPath
-      },
-      useNullAsDefault: true
-    });
+  constructor() {
     this.defaultConfig = {
       baudrate: 115200,
       comPort: '',
@@ -23,52 +15,31 @@ export class DB {
   }
 
   async getUSBPortName(usbID: string): Promise<string> {
-    let res = await this.db.from('ports').where({
-      ID: usbID
-    }).select('*');
-
-    if (res.length < 1) {
+    let res = store.state.modems.list[usbID]
+    if (!res) {
       return 'unnamed';
     }
 
-    return res[0].name;
+    return res.name;
   }
 
   async findDeviceConfig(vendorID: string, deviceID: string): Promise<DriverConfig> {
-    let config: DriverConfig = this.defaultConfig;
+    let userConfig = store.state.configurations.list[vendorID+'_'+deviceID]
 
-    let userConfig = await this.db.from('configurations').where({
-      vendorID,
-      deviceID
-    }).select('*');
-
-    if (userConfig.length < 1) {
-
-      let defaultConfig = await this.db.from('modem_configuration').where({
-        vendorID,
-        deviceID
-      }).select('*');
-
-      if (defaultConfig.length > 1) {
-        return JSON.parse(defaultConfig[0].config);
-      }
-
-      return config
+    if (!userConfig) {
+      return this.defaultConfig
     }
 
     return JSON.parse(userConfig[0].config);
   }
 
   async findUserConfigForImei(imei: string): Promise<DriverConfig | false> {
-    let userConfig = await this.db.from('configurations').where({
-      imei
-    }).select('*');
-    let config;
+    let userConfig = store.state.configurations.list[imei]
 
-    if (userConfig.length > 0) {
-      config = JSON.parse(userConfig[0].config);
-      if (userConfig[0].name) {
-        config.name = userConfig[0].name;
+    if (userConfig) {
+      let config = JSON.parse(userConfig.config);
+      if (userConfig.name) {
+        config.name = userConfig.name;
       }
       return config;
     }
@@ -76,17 +47,12 @@ export class DB {
     return false;
   }
 
-  getSimIdentificationList() {
-    return this.db.from('sim_identification').select('*');
-  }
 
   async saveModemConfig(modem: ModemObjectForInterface) {
-    let modemConfig = await this.db.table('configurations').where({
-      imei: modem.info.imei
-    }).select('*');
+    let modemConfig = store.state.configurations.list[modem.info.imei]
 
-    if (modemConfig.length < 1) {
-      await this.db.table('configurations').insert({
+    if (!modemConfig) {
+      store.dispatch('configurations/set', {
         imei: modem.info.imei,
         name: modem.config.name,
         vendorID: modem.comPorts[Object.keys(modem.comPorts)[0]].vendorId,
@@ -98,37 +64,31 @@ export class DB {
         updatedAt: new Date()
       })
     } else {
-      await this.db.table('configurations').where({
-        imei: modem.info.imei
-      }).update({
-        name: modem.config.name,
-        config: JSON.stringify(modem.config),
-        updatedAt: new Date()
-      })
+      modemConfig = JSON.parse(JSON.stringify(modemConfig));
+      modemConfig.name = JSON.parse(JSON.stringify(modem.config.name));
+      modemConfig.config = JSON.stringify(modem.config);
+      modemConfig.updatedAt = new Date()
+      store.dispatch('configurations/update', modemConfig)
     }
 
     let usbID = modem.usbID;
 
-    let usbNames = await this.db.table('ports').where({
-      ID: usbID
-    }).select('*');
+    let usbNames = store.state.ports.list[usbID]
 
-    if (usbNames.length < 1) {
-      await this.db.table('ports').insert({
-        ID: usbID,
+    if (!usbNames) {
+      store.dispatch('ports/set', {
+        usbID: usbID,
         name: modem.usbName
-      });
+      })
     } else {
-      await this.db.table('ports').where({
-        ID: usbID
-      }).update({
-        name: modem.usbName
-      });
+      usbNames = JSON.parse(JSON.stringify(usbNames));
+      usbNames.name = modem.usbName;
+      store.dispatch('ports/update', usbNames)
     }
   }
 
   async saveMessage(message: PDUMessage, modemInfo: DeviceInfo) {
-    await this.db.table('operations').insert({
+    store.dispatch('operations/set', {
       imsi: modemInfo.imsi,
       imei: modemInfo.imei,
       //number: '', TODO: Add number save for production application
@@ -142,19 +102,4 @@ export class DB {
       updatedAt: new Date().toDateString()
     })
   }
-
-  // async findUser() {
-  //   let user = await this.db.table('users').orderBy('id').limit(1);
-
-  //   return user[0];
-  // }
-
-  // async saveUser(user) {
-  //   await this.db.table('users').insert({
-  //     name: user.name,
-  //     apikey: user.apikey,
-  //     createdAt: new Date(),
-  //     updatedAt: new Date()
-  //   })
-  // }
 }

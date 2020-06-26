@@ -68,21 +68,23 @@ export class IMSIParser {
   }
 
   validateIMSI(imsi: ParsedIMSI): ParsedIMSIResponse | false {
-    let index = this.simIdentification.findIndex((value, index): boolean => {
-      if (value.mcc == imsi.mcc && value.mnc == imsi.mnc) {
-        return true;
+    let select = null
+    for (let i in this.simIdentification) {
+      if (this.simIdentification[i].mcc == imsi.mcc && this.simIdentification[i].mnc == imsi.mnc) {
+        select = this.simIdentification[i];
+        break;
       }
-      return false;
-    })
-    if (index !== -1) {
+    }
+
+    if (select) {
       return {
         mcc: imsi.mcc,
         mnc: imsi.mnc,
         msin: imsi.msin,
-        country: this.simIdentification[index].country,
-        iso: this.simIdentification[index].iso,
-        operator: this.simIdentification[index].operator,
-        ussdCommands: this.simIdentification[index].ussdCommands ? JSON.parse(this.simIdentification[index].ussdCommands) : false
+        country: select.country,
+        iso: select.iso,
+        operator: select.operator,
+        ussdCommands: select.ussdCommands ? JSON.parse(select.ussdCommands) : false
       }
     }
 

@@ -2,17 +2,8 @@ import { DriverConnector, DeviceInfo, MessagesMemory, Driver, DriverConfig } fro
 import logger from './logger';
 import { IMSIParser, SimIdentification } from "./imsi";
 import { EventEmitter } from "events";
-import { PDUMessage } from "./manager";
-
-interface PortInfo {
-  comName: string;
-  manufacturer?: string;
-  serialNumber?: string;
-  pnpId?: string;
-  locationId: string;
-  vendorId?: string;
-  productId?: string;
-}
+import {PDUMessage, USBInfo} from "./manager";
+import {DB} from "./db";
 
 interface Modem {
   driver: Driver;
@@ -48,7 +39,7 @@ export interface ModemObjectForInterface {
 interface StartMessage {
   event: 'start',
   data: {
-    ports: Array<PortInfo>,
+    ports: Array<USBInfo>,
     simIdentification: Array<SimIdentification>
   }
 }
@@ -163,15 +154,31 @@ interface MessagesGluing {
 logger.transports.file.level = 'debug';
 var modemConnection = null;
 
-class MessageEventEmitter extends EventEmitter {
-  constructor() {
+export class ModemConnection extends EventEmitter {
+
+  timer: NodeJS.Timer;
+  modem: PortData;
+  ports: Array<USBInfo>
+  messagesGluing: MessagesGluing;
+  parser: IMSIParser;
+  db: DB;
+
+  constructor(ports: Array<USBInfo>, simIdentification: Array<SimIdentification>, db:DB) {
     super();
+
+    this.timer = null;
+    this.modem = null;
+    this.ports = ports;
+    this.messagesGluing = {};
+    this.parser = new IMSIParser(simIdentification);
+    this.db = db;
+
     this.registerListeners();
     this.setMaxListeners(128);
   }
 
   registerListeners() {
-    process.on('message', (msg: IPCMessage) => {
+    this.on('message', (msg: IPCMessage) => {
       switch (msg.event) {
         case 'start': {
           this.emit('start', msg.data);
@@ -195,101 +202,13 @@ class MessageEventEmitter extends EventEmitter {
       }
     })
   }
-}
-
-class DBIPC {
-  emitter: MessageEventEmitter;
-
-  constructor(emitter: MessageEventEmitter) {
-    this.emitter = emitter;
-  }
-
-  findDeviceConfig(vendorId: string, productId: string): Promise<DriverConfig> {
-    return new Promise((resolve, reject) => {
-      setTimeout(() => {
-        reject('Time up! method: findDeviceConfig');
-      }, 5000);
-
-      process.send({
-        event: 'db',
-        method: 'findDeviceConfig',
-        params: [vendorId, productId]
-      })
-
-      let listener = ({ result }) => {
-        resolve(result);
-        this.emitter.removeListener('db:findDeviceConfig', listener);
-      }
-
-      this.emitter.on('db:findDeviceConfig', listener);
-    })
-  }
-
-  findUserConfigForImei(imei: string): Promise<DriverConfig> {
-    return new Promise((resolve, reject) => {
-      setTimeout(() => {
-        reject('Time up! method: findUserConfigForImei');
-      }, 5000);
-
-      process.send({
-        event: 'db',
-        method: 'findUserConfigForImei',
-        params: [imei]
-      })
-
-      let listener = ({ result }) => {
-        resolve(result);
-        this.emitter.removeListener('db:findUserConfigForImei', listener);
-      }
-
-      this.emitter.on('db:findUserConfigForImei', listener);
-    })
-  }
-
-  getUSBPortName(locationId: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-      setTimeout(() => {
-        reject('Time up! method: getUSBPortName');
-      }, 5000);
-
-      process.send({
-        event: 'db',
-        method: 'getUSBPortName',
-        params: [locationId]
-      })
-
-      let listener = ({ result }) => {
-        resolve(result);
-        this.emitter.removeListener('db:getUSBPortName', listener);
-      }
-
-      this.emitter.on('db:getUSBPortName', listener);
-    })
-  }
-}
-
-class ModemConnection {
-
-  timer: NodeJS.Timer;
-  modem: PortData;
-  ports: Array<PortInfo>
-  messagesGluing: MessagesGluing;
-  parser: IMSIParser;
-
-  constructor(ports: Array<PortInfo>, simIdentification: Array<SimIdentification>) {
-    this.timer = null;
-    this.modem = null;
-    this.ports = ports;
-    this.messagesGluing = {};
-    this.parser = new IMSIParser(simIdentification);
-  }
 
   async connect(): Promise<void> {
-    let config: DriverConfig = await db.findDeviceConfig(this.ports[0].vendorId, this.ports[0].productId);
+    let config: DriverConfig = await this.db.findDeviceConfig(this.ports[0].vendorId, this.ports[0].productId);
     for (const port of this.ports) {
       try {
-        logger.debug('connecting to: ', port.comName);
-        config.comPort = port.comName;
+        logger.debug('connecting to: ', port.path);
+        config.comPort = port.path;
         let driver = await DriverConnector.connect(config);
         let info = await driver.getDeviceInfo();
         logger.debug('Device info:', info);
@@ -297,9 +216,9 @@ class ModemConnection {
         logger.debug('Sim info:', simInfo);
         let userConfig = null;
         try {
-          userConfig = await db.findUserConfigForImei(info.imei);
+          userConfig = await this.db.findUserConfigForImei(info.imei);
           if (userConfig) {
-            userConfig.comPort = port.comName
+            userConfig.comPort = port.path
           }
         } catch (err) {
           logger.error('Error on find user config for imei');
@@ -309,10 +228,10 @@ class ModemConnection {
           await this.correctMemoryType(driver);
         }
 
-        let usbName = await db.getUSBPortName(port.locationId);
+        let usbName = await this.db.getUSBPortName(port.locationId);
         let comPorts = {};
         for (let j = 0; j < this.ports.length; j++) {
-          comPorts[this.ports[j].comName] = {
+          comPorts[this.ports[j].path] = {
             connected: false,
             driver: null,
             vendorId: port.vendorId || 'unknown',
@@ -320,7 +239,7 @@ class ModemConnection {
             usb: port.locationId,
           }
         }
-        comPorts[port.comName] = {
+        comPorts[port.path] = {
           connected: driver.modem.opened,
           driver,
           vendorId: port.vendorId || 'unknown',
@@ -341,9 +260,7 @@ class ModemConnection {
         break;
       } catch (err) {
         logger.error('Error while connecting to port: ', err);
-        process.send({
-          event: 'modemError'
-        })
+        this.emit('modemError')
       }
     }
 
@@ -375,9 +292,7 @@ class ModemConnection {
   }
 
   async updateModemInfo() {
-    process.send({
-      event: 'updating'
-    });
+    this.emit('updating');
     // Последнее условие - дикий костыль от ON-565
     logger.debug(this.modem);
     let port = this.modem.comPorts[this.modem.config.comPort] || this.modem.comPorts[Object.keys(this.modem.comPorts)[0]];
@@ -401,16 +316,11 @@ class ModemConnection {
         usbName: this.modem.usbName,
         loading: false
       }
-      process.send({
-        event: 'updatingFinished'
-      });
-      process.send({
-        event: 'modemUpdated',
-        data: {
-          usbID: this.modem.usbID,
-          modem
-        }
-      });
+      this.emit('updatingFinished')
+      this.emit('modemUpdated', {
+        usbID: this.modem.usbID,
+        modem
+      })
     } catch (err) {
       let modem: ModemObjectForInterface = {
         comPorts: Object.keys(this.modem.comPorts),
@@ -422,9 +332,7 @@ class ModemConnection {
         loading: false
       }
       await this.reconnectToModem(modem);
-      process.send({
-        event: 'updatingFinished'
-      });
+      this.emit('updatingFinished');
       logger.error('Error on modem update:', err);
     }
   }
@@ -462,12 +370,10 @@ class ModemConnection {
           }
         }
 
-        process.send({
-          event: 'newSMSMessage',
-          data: {
-            message: messageToSend,
-            info: this.modem.info
-          }
+
+        this.emit('newSMSMessage', {
+          message: messageToSend,
+          info: this.modem.info
         })
 
         let res = await driver.deleteMessage(response.messages[i].indexInMemory);
@@ -508,91 +414,27 @@ class ModemConnection {
       this.modem.comPorts[modem.config.comPort || Object.keys(this.modem.comPorts)[0]].driver = driver;
       this.modem.online = true;
 
-      process.send({
-        event: 'modemReconnected',
-        data: {
-          modem: {
-            comPorts: Object.keys(this.modem.comPorts),
-            config: this.modem.config,
-            info: this.modem.info,
-            online: this.modem.online,
-            usbID: this.modem.usbID,
-            usbName: this.modem.usbName
-          }
+      this.emit('modemReconnected', {
+        modem: {
+          comPorts: Object.keys(this.modem.comPorts),
+          config: this.modem.config,
+          info: this.modem.info,
+          online: this.modem.online,
+          usbID: this.modem.usbID,
+          usbName: this.modem.usbName
         }
       })
     })
   }
+
 
   disconnectModem(): Promise<void | any> {
     logger.debug('disconnect modem: ', this.modem)
     return this.modem.comPorts[this.modem.config.comPort].driver.close().then(() => {
       this.modem.online = false;
-      process.send({
-        event: 'modemDisconnected',
-        data: {
-          usbID: this.modem.usbID
-        }
-      })
+      this.emit('modemDisconnected', {usbID: this.modem.usbID})
     }).catch((err) => {
       logger.error('Error while disconnect modem: ', err);
     });
   }
 }
-
-const messageEmitter = new MessageEventEmitter();
-const db = new DBIPC(messageEmitter);
-
-messageEmitter.on('start', (data) => {
-  console.log('start event from parent');
-  if (modemConnection) {
-    process.send({
-      event: 'error',
-      error: {
-        message: 'Modem is already connected'
-      }
-    })
-    return;
-  }
-  modemConnection = new ModemConnection(data.ports, data.simIdentification);
-  modemConnection.connect().then(() => {
-    console.log('modemConnected', modemConnection);
-    process.send({
-      event: 'modemConnected',
-      data: {
-        usbID: modemConnection.modem.usbID,
-        modem: {
-          comPorts: Object.keys(modemConnection.modem.comPorts),
-          config: modemConnection.modem.config,
-          info: modemConnection.modem.info,
-          loading: true,
-          online: true,
-          usbID: modemConnection.modem.usbID,
-          usbName: modemConnection.modem.usbName
-        }
-      }
-    });
-  }).catch(err => {
-    console.error(err);
-  });
-});
-
-messageEmitter.on('reconnect', (modem: ModemObjectForInterface) => {
-  logger.debug('reconnect event from parent', modem);
-  if (!modemConnection) {
-    process.send({
-      event: 'error',
-      error: {
-        message: 'Modem is already disconnected'
-      }
-    })
-  }
-  modemConnection.reconnectToModem(modem);
-})
-
-process.on('disconnect', () => {
-  modemConnection.disconnectModem().then(() => {
-    process.exit();
-  });
-})
-
