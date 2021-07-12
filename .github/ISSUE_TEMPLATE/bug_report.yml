@@ -56,13 +56,13 @@ body:
       required: true
       
       
-- type: input
-  id: environment
-  attributes:
-    label: Environment
-    placeholder: "Ubuntu 20.04"
-  validations:
-    required: false
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: "Ubuntu 20.04"
+    validations:
+      required: false
   
     
   - type: textarea
