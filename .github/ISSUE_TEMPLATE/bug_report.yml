@@ -16,10 +16,8 @@ body:
       description: Also tell us, what did you expect to happen?
       placeholder: Tell us what you see!
       value: |
-        "A bug happened!"
-        
-        **Verson**
-        3.6.xx
+        **Bug description**
+        A bug happened!
         
         **Expected behavior**
         A clear and concise description of what you expected to happen.
@@ -43,18 +41,15 @@ body:
         4. See error
     validations:
       required: true
-      
-  - type: dropdown
+
+  - type: input
     id: version
     attributes:
       label: Version
-      description: What version of our software are you running?
-      options:
-        - 3.6.x (NEW)
-        - 3.2.x (OLD)
+      placeholder: "3.6.27"
+      value: "3.6.xx"
     validations:
       required: true
-      
       
   - type: input
     id: environment
@@ -63,7 +58,6 @@ body:
       placeholder: "Ubuntu 20.04"
     validations:
       required: false
-  
     
   - type: textarea
     id: logs
