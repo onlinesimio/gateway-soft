@@ -1,7 +1,9 @@
 ---
+# Currently supported
 name: Bug report
 about: Create a report to help us improve
-
+title: "[3.6.37]: "
+labels: ["bug-report"]
 ---
 
 **Describe the bug**
