@@ -24,10 +24,6 @@ body:
 
         **Screenshots**
         If applicable, add screenshots to help explain your problem.
-        
-        **LOGS and FILES links**
-        1. ...
-        2. ...
 
         **Additional context**
         Add any other context about the problem here.
@@ -63,10 +59,13 @@ body:
     validations:
       required: false
     
-#   - type: textarea
-#     id: logs
-#     attributes:
-#       label: Relevant log output
-#       description: Please copy and paste any relevant log output. This will be automatically formatted into code, so no need for backticks.
-#       render: shell
-#       value: "Attention logs are best sent via google drive, with limited access!"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: Please copy and paste any relevant log output. This will be automatically formatted into code, so no need for backticks.
+      render: shell
+      value: |
+        Attention logs are best sent via google drive, with limited access!
+        1. ...
+        2. ...
