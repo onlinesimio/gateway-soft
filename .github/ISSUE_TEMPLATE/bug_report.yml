@@ -41,6 +41,17 @@ body:
         4. See error
     validations:
       required: true
+      
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - low
+        - middle
+        - high
+    validations:
+      required: true
 
   - type: input
     id: version
