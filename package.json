@@ -42,7 +42,7 @@
     "@types/axios": "^0.14.0",
     "@types/node": "^14.0.14",
     "@types/serialport": "^8.0.1",
-    "electron": "^8.3.1",
+    "electron": "^15.5.5",
     "electron-builder": "^22.7.0",
     "electron-rebuild": "^1.11.0",
     "electron-webpack": "^2.8.2",
